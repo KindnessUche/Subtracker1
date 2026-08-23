@@ -1,0 +1,20 @@
+# Environment
+.env
+
+# Backend (Maven / Java)
+backend/target/
+backend/.idea/
+backend/*.iml
+
+# Frontend (Node / Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+frontend/.env*
+!frontend/.env.example
+
+# OS / editors
+.DS_Store
+*.log
+.vscode/
