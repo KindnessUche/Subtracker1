@@ -28,6 +28,8 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       JWT_SECRET: ${JWT_SECRET:-please_change_this_secret_in_production}
+      APP_ENV: ${APP_ENV:-development}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:3000}
       APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
@@ -38,6 +40,13 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       GMAIL_SYNC_MAX_RESULTS: ${GMAIL_SYNC_MAX_RESULTS:-50}
       GMAIL_SYNC_WINDOW_DAYS: ${GMAIL_SYNC_WINDOW_DAYS:-400}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@subtracker.local}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      REMINDER_DAYS_BEFORE: ${REMINDER_DAYS_BEFORE:-3}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
 

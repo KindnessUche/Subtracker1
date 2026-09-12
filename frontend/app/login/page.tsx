@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import AuthVisualPanel from "@/components/auth/AuthVisualPanel";
+
+export default function LoginPage() {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState("");
