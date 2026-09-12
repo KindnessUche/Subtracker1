@@ -1,4 +1,4 @@
-# Subtracker — Subscription Tracker
+# Subtracker — Subscription Tracker me sef
 
 A full-stack subscription tracker: track recurring subscriptions manually, or (optionally)
 auto-detect them by scanning Gmail with Gemini.
