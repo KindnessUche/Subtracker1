@@ -88,6 +88,8 @@ public class ReviewQueueService {
             item.setCurrency(extracted.currency() != null && !extracted.currency().isBlank() ? extracted.currency() : "USD");
             item.setBillingCycle(extracted.billingCycle() != null ? extracted.billingCycle() : "UNKNOWN");
             item.setPreviousAmount(extracted.isPriceChange() ? extracted.previousAmount() : null);
+            item.setIsTrial(extracted.isTrial());
+            item.setTrialEndDate(extracted.isTrial() ? extracted.trialEndDate() : null);
             item.setConfidenceScore(extracted.confidence());
             item.setRawSnippet(candidate.snippet());
             item.setSourceMessageId(candidate.id());

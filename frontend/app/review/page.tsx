@@ -14,7 +14,7 @@ import {
   TrendingUp,
   Sparkles,
 } from "lucide-react";
-import api, { getToken, ReviewQueueItem } from "@/lib/api";
+import api, { isAuthenticated, ReviewQueueItem } from "@/lib/api";
 
 function formatMoney(amount: number, currency: string) {
   return `${amount.toFixed(2)} ${currency}`;
@@ -41,11 +41,13 @@ export default function ReviewQueuePage() {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
-    loadItems();
+    isAuthenticated().then((ok) => {
+      if (!ok) {
+        router.push("/login");
+        return;
+      }
+      loadItems();
+    });
   }, [router, loadItems]);
 
   async function handleSync() {
@@ -178,6 +180,11 @@ export default function ReviewQueuePage() {
                         ) : (
                           <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
                             new
+                          </span>
+                        )}
+                        {item.isTrial && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-600">
+                            free trial{item.trialEndDate ? ` · ends ${item.trialEndDate}` : ""}
                           </span>
                         )}
                       </div>

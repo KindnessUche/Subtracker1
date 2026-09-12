@@ -52,6 +52,13 @@ public class Subscription {
 
     private LocalDate trialEndDate;
 
+    /**
+     * The nextBillingDate value (at the time it was current) for which a renewal-reminder
+     * email has already been sent. Prevents re-notifying every day the scheduler runs while
+     * still allowing a fresh reminder once the date rolls forward to a new cycle.
+     */
+    private LocalDate lastReminderSentFor;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 }

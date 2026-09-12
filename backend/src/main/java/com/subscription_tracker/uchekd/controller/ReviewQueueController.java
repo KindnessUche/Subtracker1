@@ -1,12 +1,16 @@
 package com.subscription_tracker.uchekd.controller;
 
 import com.subscription_tracker.uchekd.dto.ReviewQueueItemResponse;
+import com.subscription_tracker.uchekd.model.PriceHistory;
 import com.subscription_tracker.uchekd.model.ReviewQueueItem;
 import com.subscription_tracker.uchekd.model.Subscription;
 import com.subscription_tracker.uchekd.model.User;
+import com.subscription_tracker.uchekd.repository.PriceHistoryRepository;
 import com.subscription_tracker.uchekd.repository.ReviewQueueItemRepository;
 import com.subscription_tracker.uchekd.repository.SubscriptionRepository;
 import com.subscription_tracker.uchekd.repository.UserRepository;
+import com.subscription_tracker.uchekd.service.BillingCycleService;
+import com.subscription_tracker.uchekd.service.NotificationService;
 import com.subscription_tracker.uchekd.service.ReviewQueueService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -28,7 +31,10 @@ public class ReviewQueueController {
     @Autowired private UserRepository userRepository;
     @Autowired private ReviewQueueItemRepository reviewQueueItemRepository;
     @Autowired private SubscriptionRepository subscriptionRepository;
+    @Autowired private PriceHistoryRepository priceHistoryRepository;
     @Autowired private ReviewQueueService reviewQueueService;
+    @Autowired private BillingCycleService billingCycleService;
+    @Autowired private NotificationService notificationService;
 
     @PostMapping("/sync")
     public ResponseEntity<?> sync(@AuthenticationPrincipal UserDetails userDetails) {
@@ -70,9 +76,7 @@ public class ReviewQueueController {
             return ResponseEntity.status(409).body(Map.of("error", "Already " + item.getStatus().toLowerCase()));
         }
 
-        Subscription existing = subscriptionRepository
-                .findFirstByUserAndMerchantNameIgnoreCase(user, item.getMerchantName())
-                .orElse(null);
+        Subscription existing = findExistingSubscription(user, item);
 
         if ("PRICE_CHANGE".equals(item.getType())) {
             // A price change should UPDATE the existing subscription, not create a second one.
@@ -80,12 +84,15 @@ public class ReviewQueueController {
                 // No subscription to update — fall through and create it as a new one.
                 existing = createSubscription(user, item);
             } else {
+                var previousAmount = existing.getAmount();
                 existing.setAmount(item.getAmount());
                 existing.setCurrency(item.getCurrency());
                 if (item.getBillingCycle() != null && !"UNKNOWN".equals(item.getBillingCycle())) {
                     existing.setBillingCycle(item.getBillingCycle());
                 }
                 subscriptionRepository.save(existing);
+                recordPriceHistory(existing);
+                notificationService.sendPriceChangeAlert(existing, previousAmount);
             }
         } else {
             // NEW_SUBSCRIPTION: dedup so re-syncing or a second receipt doesn't duplicate the merchant.
@@ -106,6 +113,36 @@ public class ReviewQueueController {
         return ResponseEntity.ok(toResponse(item));
     }
 
+    /**
+     * Dedup key for matching a review-queue item to an existing subscription. Merchant name
+     * alone previously caused collisions when a user has two different subscriptions with the
+     * same merchant (e.g. two Adobe products) — billing cycle narrows that considerably. This
+     * still isn't a perfect match (same merchant + same cycle + different plan is still
+     * possible) but is meaningfully better than name-only.
+     */
+    private Subscription findExistingSubscription(User user, ReviewQueueItem item) {
+        if (item.getBillingCycle() != null && !"UNKNOWN".equals(item.getBillingCycle())) {
+            var byCycle = subscriptionRepository
+                    .findFirstByUserAndMerchantNameIgnoreCaseAndBillingCycle(
+                            user, item.getMerchantName(), item.getBillingCycle());
+            if (byCycle.isPresent()) {
+                return byCycle.get();
+            }
+        }
+        return subscriptionRepository
+                .findFirstByUserAndMerchantNameIgnoreCase(user, item.getMerchantName())
+                .orElse(null);
+    }
+
+    private void recordPriceHistory(Subscription sub) {
+        PriceHistory history = new PriceHistory();
+        history.setSubscription(sub);
+        history.setAmount(sub.getAmount());
+        history.setCurrency(sub.getCurrency());
+        history.setEffectiveAt(Instant.now());
+        priceHistoryRepository.save(history);
+    }
+
     private Subscription createSubscription(User user, ReviewQueueItem item) {
         Subscription sub = new Subscription();
         sub.setUser(user);
@@ -113,27 +150,20 @@ public class ReviewQueueController {
         sub.setAmount(item.getAmount());
         sub.setCurrency(item.getCurrency());
         sub.setBillingCycle(item.getBillingCycle());
-        sub.setNextBillingDate(nextBillingDate(item.getBillingCycle()));
+        boolean isTrial = item.getIsTrial() != null && item.getIsTrial();
+        // A trial's first real charge happens when the trial ends, not one cycle from today —
+        // using firstBillingDate() here would tell a trialing user they're being charged a full
+        // cycle later than they actually will be.
+        sub.setNextBillingDate(isTrial && item.getTrialEndDate() != null
+                ? item.getTrialEndDate()
+                : billingCycleService.firstBillingDate(item.getBillingCycle()));
         sub.setStatus("ACTIVE");
-        sub.setIsTrial(false);
+        sub.setIsTrial(isTrial);
+        sub.setTrialEndDate(item.getTrialEndDate());
         sub.setCreatedAt(Instant.now());
         subscriptionRepository.save(sub);
+        recordPriceHistory(sub);
         return sub;
-    }
-
-    /** Derive the next billing date from the cycle instead of always assuming +1 month. */
-    private LocalDate nextBillingDate(String billingCycle) {
-        LocalDate today = LocalDate.now();
-        if (billingCycle == null) {
-            return today.plusMonths(1);
-        }
-        return switch (billingCycle) {
-            case "WEEKLY" -> today.plusWeeks(1);
-            case "QUARTERLY" -> today.plusMonths(3);
-            case "ANNUAL" -> today.plusYears(1);
-            case "MONTHLY" -> today.plusMonths(1);
-            default -> today.plusMonths(1); // UNKNOWN — best-effort default
-        };
     }
 
     @PostMapping("/{id}/dismiss")
@@ -163,7 +193,9 @@ public class ReviewQueueController {
                 item.getConfidenceScore(),
                 item.getRawSnippet(),
                 item.getStatus(),
-                item.getCreatedAt()
+                item.getCreatedAt(),
+                item.getIsTrial(),
+                item.getTrialEndDate()
         );
     }
 }

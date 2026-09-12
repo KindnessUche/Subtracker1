@@ -1,6 +1,7 @@
 package com.subscription_tracker.uchekd.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.subscription_tracker.uchekd.dto.ExtractedSubscription;
 import com.subscription_tracker.uchekd.dto.GeminiResponse;
 import org.slf4j.Logger;
@@ -32,7 +33,12 @@ public class GeminiExtractionService {
     private static final int MAX_EMAIL_CHARS = 12_000;
 
     private final RestClient restClient = RestClient.create();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // This service builds its own ObjectMapper (rather than injecting Spring's autoconfigured
+    // one) because it needs to parse Gemini's raw JSON text output directly, outside the normal
+    // request/response pipeline. Registering JavaTimeModule explicitly is required here since a
+    // bare `new ObjectMapper()` does NOT know how to parse the trialEndDate LocalDate field —
+    // Spring's autoconfigured ObjectMapper gets that module for free, this one doesn't.
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     private static final String PROMPT_TEMPLATE = """
             You are looking at a single email that may or may not be a subscription billing notice.
@@ -42,6 +48,11 @@ public class GeminiExtractionService {
             isPriceChange should be true only if the email itself explicitly states or clearly implies the price increased from a stated previous amount.
             If isPriceChange is false, previousAmount MUST be null — do not populate it with any other number from the email.
             Do not infer a previousAmount from unrelated figures (fees, taxes, other line items) — only from an explicit "was X, now Y" statement.
+
+            isTrial should be true only if the email explicitly describes an active free trial (e.g. "your free trial ends in 3 days",
+            "trial period", "you won't be charged until"). If isTrial is true and the email states when the trial ends or when the
+            first charge will occur, set trialEndDate to that date in YYYY-MM-DD format; otherwise leave it null.
+            Do not set isTrial to true just because the product happens to offer trials in general — only if THIS email is about one.
 
             Email content:
             ---
@@ -64,7 +75,9 @@ public class GeminiExtractionService {
                         "billingCycle", Map.of("type", "STRING", "enum", List.of("WEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL", "UNKNOWN")),
                         "isPriceChange", Map.of("type", "BOOLEAN"),
                         "previousAmount", Map.of("type", "NUMBER"),
-                        "confidence", Map.of("type", "NUMBER")
+                        "confidence", Map.of("type", "NUMBER"),
+                        "isTrial", Map.of("type", "BOOLEAN"),
+                        "trialEndDate", Map.of("type", "STRING")
                 ),
                 "required", List.of("isSubscription", "merchantName", "billingCycle", "isPriceChange", "confidence")
         );

@@ -14,18 +14,24 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.function.Supplier;
 
 /**
  * Instead of a filter that tries to set auth and hopes it sticks,
  * we tell Spring Security exactly how to LOAD the security context.
  * Spring Security calls this before any authorization check. No timing issues.
+ *
+ * The JWT is read primarily from the httpOnly auth cookie (set by AuthController on
+ * login/signup). The Authorization: Bearer header is still honored as a fallback so
+ * non-browser API clients (scripts, Postman, mobile) can keep working without cookies.
  */
 @Component
 public class JwtSecurityContextRepository implements SecurityContextRepository {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private AuthCookieService authCookieService;
 
     @Override
     public DeferredSecurityContext loadDeferredContext(HttpServletRequest request) {
@@ -49,21 +55,14 @@ public class JwtSecurityContextRepository implements SecurityContextRepository {
 
     private SecurityContext buildContext(HttpServletRequest request) {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        String header = request.getHeader("Authorization");
 
-        System.out.println(">>> [JwtRepo] Request: " + request.getMethod() + " " + request.getRequestURI());
-        System.out.println(">>> [JwtRepo] Authorization header: " + header);
-
-        if (header == null || !header.startsWith("Bearer ")) {
-            System.out.println(">>> [JwtRepo] No Bearer token — returning empty context");
+        String token = extractToken(request);
+        if (token == null) {
             return context;
         }
 
-        String token = header.substring(7).trim();
-
         if (jwtService.isTokenValid(token)) {
             String email = jwtService.extractEmail(token);
-            System.out.println(">>> [JwtRepo] Token valid — setting auth for: " + email);
 
             UserDetails userDetails = User.withUsername(email)
                     .password("")
@@ -75,11 +74,23 @@ public class JwtSecurityContextRepository implements SecurityContextRepository {
                             userDetails, null, userDetails.getAuthorities());
 
             context.setAuthentication(auth);
-        } else {
-            System.out.println(">>> [JwtRepo] Token NOT valid — returning empty context");
         }
 
         return context;
+    }
+
+    private String extractToken(HttpServletRequest request) {
+        String cookieToken = authCookieService.readToken(request);
+        if (cookieToken != null) {
+            return cookieToken;
+        }
+
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7).trim();
+        }
+
+        return null;
     }
 
     @Override
@@ -95,7 +106,6 @@ public class JwtSecurityContextRepository implements SecurityContextRepository {
 
     @Override
     public boolean containsContext(HttpServletRequest request) {
-        String header = request.getHeader("Authorization");
-        return header != null && header.startsWith("Bearer ");
+        return extractToken(request) != null;
     }
 }

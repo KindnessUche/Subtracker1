@@ -14,7 +14,7 @@ import {
   Check,
   Repeat,
 } from "lucide-react";
-import api, { saveToken } from "@/lib/api";
+import api from "@/lib/api";
 import AuthVisualPanel from "@/components/auth/AuthVisualPanel";
 
 export default function SignupPage() {
@@ -39,8 +39,8 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const res = await api.post("/api/auth/signup", { email, password });
-      saveToken(res.data.token);
+      await api.post("/api/auth/signup", { email, password });
+      // Token is set as an httpOnly cookie by the backend; nothing to store client-side.
       router.push("/dashboard");
     } catch (err: any) {
       if (err.response?.status === 409) {

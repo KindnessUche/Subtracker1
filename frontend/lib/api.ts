@@ -30,23 +30,15 @@ export interface SubscriptionInput {
   trialEndDate?: string | null;
 }
 
-const TOKEN_KEY = "uchekd_token";
-
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
+  // The JWT now lives in an httpOnly cookie set by the backend (see AuthController),
+  // instead of localStorage. withCredentials makes the browser send that cookie on
+  // every request and store any Set-Cookie header from responses.
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
-});
-
-api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
 });
 
 api.interceptors.response.use(
@@ -57,25 +49,33 @@ api.interceptors.response.use(
       typeof window !== "undefined" &&
       window.location.pathname !== "/login"
     ) {
-      localStorage.removeItem(TOKEN_KEY);
       window.location.href = "/login";
     }
     return Promise.reject(error);
   }
 );
 
-export function saveToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+/**
+ * Checks whether the current session (httpOnly cookie) is valid, by asking the
+ * backend rather than reading anything client-side — there's nothing for JS to read now.
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  try {
+    await api.get("/api/auth/me");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+export async function logout(): Promise<void> {
+  try {
+    await api.post("/api/auth/logout");
+  } finally {
+    window.location.href = "/login";
+  }
 }
 
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
 export interface ReviewQueueItem {
   id: string;
   type: "NEW_SUBSCRIPTION" | "PRICE_CHANGE";
@@ -88,6 +88,8 @@ export interface ReviewQueueItem {
   rawSnippet: string | null;
   status: string;
   createdAt: string;
+  isTrial: boolean | null;
+  trialEndDate: string | null;
 }
 
 export default api;

@@ -2,8 +2,10 @@ package com.subscription_tracker.uchekd.controller;
 
 import com.subscription_tracker.uchekd.dto.SubscriptionRequest;
 import com.subscription_tracker.uchekd.dto.SubscriptionResponse;
+import com.subscription_tracker.uchekd.model.PriceHistory;
 import com.subscription_tracker.uchekd.model.Subscription;
 import com.subscription_tracker.uchekd.model.User;
+import com.subscription_tracker.uchekd.repository.PriceHistoryRepository;
 import com.subscription_tracker.uchekd.repository.SubscriptionRepository;
 import com.subscription_tracker.uchekd.repository.UserRepository;
 import jakarta.validation.Valid;
@@ -13,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +27,7 @@ public class SubscriptionController {
 
     @Autowired private SubscriptionRepository subscriptionRepository;
     @Autowired private UserRepository userRepository;
+    @Autowired private PriceHistoryRepository priceHistoryRepository;
 
     @GetMapping
     public ResponseEntity<?> list(@AuthenticationPrincipal UserDetails userDetails) {
@@ -56,7 +60,37 @@ public class SubscriptionController {
         sub.setCreatedAt(Instant.now());
 
         subscriptionRepository.save(sub);
+        recordPriceHistory(sub);
         return ResponseEntity.ok(toResponse(sub));
+    }
+
+    /** Price history for the "how has this crept up over time" chart. */
+    @GetMapping("/{id}/price-history")
+    public ResponseEntity<?> priceHistory(@AuthenticationPrincipal UserDetails userDetails,
+                                          @PathVariable UUID id) {
+        User user = getUser(userDetails);
+        Subscription sub = subscriptionRepository.findByIdAndUser(id, user).orElse(null);
+        if (sub == null) {
+            return ResponseEntity.status(404).body(Map.of("error", "Subscription not found"));
+        }
+        List<Map<String, Object>> history = priceHistoryRepository
+                .findBySubscriptionOrderByEffectiveAtAsc(sub)
+                .stream()
+                .map(h -> Map.<String, Object>of(
+                        "amount", h.getAmount(),
+                        "currency", h.getCurrency(),
+                        "effectiveAt", h.getEffectiveAt()))
+                .toList();
+        return ResponseEntity.ok(history);
+    }
+
+    private void recordPriceHistory(Subscription sub) {
+        PriceHistory history = new PriceHistory();
+        history.setSubscription(sub);
+        history.setAmount(sub.getAmount());
+        history.setCurrency(sub.getCurrency());
+        history.setEffectiveAt(Instant.now());
+        priceHistoryRepository.save(history);
     }
 
     @PutMapping("/{id}")
@@ -69,6 +103,8 @@ public class SubscriptionController {
         if (sub == null) {
             return ResponseEntity.status(404).body(Map.of("error", "Subscription not found"));
         }
+
+        BigDecimal previousAmount = sub.getAmount();
 
         sub.setMerchantName(req.merchantName());
         sub.setLogoUrl(req.logoUrl());
@@ -83,6 +119,9 @@ public class SubscriptionController {
         sub.setTrialEndDate(req.trialEndDate());
 
         subscriptionRepository.save(sub);
+        if (previousAmount == null || previousAmount.compareTo(sub.getAmount()) != 0) {
+            recordPriceHistory(sub);
+        }
         return ResponseEntity.ok(toResponse(sub));
     }
 

@@ -30,8 +30,22 @@ public class GmailSyncService {
     /** Gmail caps a single list page at 500; we keep pages modest and paginate up to maxResults. */
     private static final int PAGE_SIZE = 100;
 
+    /**
+     * Widened from a narrow subject-only keyword list. Real billing emails frequently don't
+     * contain any of the original keywords in the subject line (e.g. "Your Spotify Premium is
+     * ready", "Thanks for your order") — so this now also matches on body text, not just
+     * subject, and adds several more phrasings actually used by billing systems.
+     */
+    private static final String SUBJECT_KEYWORDS =
+            "receipt OR invoice OR subscription OR payment OR billing OR renewal OR "
+                    + "\"order confirmation\" OR \"payment confirmation\" OR \"your plan\" OR "
+                    + "\"free trial\" OR \"trial ends\" OR \"trial expires\" OR membership OR "
+                    + "\"auto-renew\" OR \"automatic renewal\" OR \"thank you for your purchase\"";
+
     private String buildQuery() {
-        return "subject:(receipt OR invoice OR subscription OR payment OR billing OR renewal)"
+        // Matching subject OR body (not subject-only) catches emails whose subject line is just
+        // a brand/product name with the billing language only in the body.
+        return "(subject:(" + SUBJECT_KEYWORDS + ") OR (" + SUBJECT_KEYWORDS + "))"
                 + " newer_than:" + windowDays + "d";
     }
 

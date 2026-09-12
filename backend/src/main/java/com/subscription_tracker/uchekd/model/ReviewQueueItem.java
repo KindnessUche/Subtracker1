@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -39,6 +40,11 @@ public class ReviewQueueItem {
 
     @Column(precision = 12, scale = 2)
     private BigDecimal previousAmount;
+
+    @Column(nullable = false)
+    private Boolean isTrial = false;
+
+    private LocalDate trialEndDate;
 
     private Double confidenceScore;
 

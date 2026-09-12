@@ -2,6 +2,7 @@ package com.subscription_tracker.uchekd.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record ReviewQueueItemResponse(
@@ -15,5 +16,7 @@ public record ReviewQueueItemResponse(
         Double confidenceScore,
         String rawSnippet,
         String status,
-        Instant createdAt
+        Instant createdAt,
+        Boolean isTrial,
+        LocalDate trialEndDate
 ) {}

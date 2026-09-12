@@ -14,7 +14,7 @@ import {
   Trash2,
   Repeat,
 } from "lucide-react";
-import api, { getToken, clearToken, Subscription } from "@/lib/api";
+import api, { isAuthenticated, logout, Subscription } from "@/lib/api";
 import AddSubscriptionForm from "@/components/AddSubscriptionForm";
 import GmailConnectionCard from "@/components/GmailConnectionCard";
 
@@ -51,16 +51,17 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
-    loadSubscriptions();
+    isAuthenticated().then((ok) => {
+      if (!ok) {
+        router.push("/login");
+        return;
+      }
+      loadSubscriptions();
+    });
   }, [router, loadSubscriptions]);
 
   function handleLogout() {
-    clearToken();
-    router.push("/login");
+    logout();
   }
 
   async function handleDelete(id: string) {

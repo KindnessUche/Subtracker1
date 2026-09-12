@@ -3,6 +3,8 @@ package com.subscription_tracker.uchekd.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +14,8 @@ import java.util.Date;
 
 @Component
 public class JwtService {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtService.class);
 
     @Value("${app.jwt.secret}")
     private String secret;
@@ -35,11 +39,12 @@ public class JwtService {
     public boolean isTokenValid(String token) {
         try {
             Claims claims = getClaims(token);
-            boolean valid = claims.getExpiration().after(new Date());
-            System.out.println(">>> [JwtService] isTokenValid=" + valid + " for sub=" + claims.getSubject());
-            return valid;
+            return claims.getExpiration().after(new Date());
         } catch (Exception e) {
-            System.out.println(">>> [JwtService] isTokenValid threw: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            // Deliberately no token/claims content in the log — expired/tampered tokens are
+            // routine, not an incident, and logging the subject/claims here would leak PII
+            // (user emails) into application logs on every failed request.
+            log.debug("JWT validation failed: {}", e.getClass().getSimpleName());
             return false;
         }
     }
@@ -54,7 +59,6 @@ public class JwtService {
 
     private SecretKey getKey() {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        System.out.println(">>> [JwtService] key length in bytes: " + keyBytes.length);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
